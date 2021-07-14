@@ -27,6 +27,9 @@
 
 #define NDPI_CURRENT_PROTO NDPI_PROTOCOL_UNKNOWN
 
+#include "mariadb-connector-c/include/mysql.h"
+#include<string.h>
+
 #include "ndpi_config.h"
 #include "ndpi_api.h"
 #include "ahocorasick.h"
@@ -5387,6 +5390,101 @@ ndpi_protocol ndpi_detection_process_packet(struct ndpi_detection_module_struct 
     }
 
     flow->risk_checked = 1;
+
+      uint32_t destination_ip_int = ntohl(flow->packet.iph->daddr);
+      int length = snprintf( NULL, 0, "%d", destination_ip_int);
+      char* destination_ip = malloc( length + 1 );
+      sprintf(destination_ip, "%d.%d.%d.%d",
+              (destination_ip_int >> 24) & 0xFF,
+              (destination_ip_int >> 16) & 0xFF,
+              (destination_ip_int >>  8) & 0xFF,
+              (destination_ip_int     ) & 0xFF);
+
+      uint32_t source_ip_int = ntohl(flow->packet.iph->saddr);
+      int len = snprintf( NULL, 0, "%d", source_ip_int);
+      char* source_ip = malloc( len + 1 );
+      sprintf(source_ip, "%d.%d.%d.%d",
+              (source_ip_int >> 24) & 0xFF,
+              (source_ip_int >> 16) & 0xFF,
+              (source_ip_int >>  8) & 0xFF,
+              (source_ip_int     ) & 0xFF);
+
+
+
+//      printf("Source IP %s Destination Ip %s Master Protocol %s App Protocol %s Category %d \n",source_ip,destination_ip, ndpi_get_proto_by_id(ndpi_str,ret.master_protocol),ndpi_get_proto_by_id(ndpi_str,ret.app_protocol),ret.category);
+
+      u_int16_t source_port_int;
+      u_int16_t destination_port_int;
+
+      if(flow->packet.tcp!=NULL){
+          source_port_int = ntohs(flow->packet.tcp->source);
+          destination_port_int = ntohs(flow->packet.tcp->dest);
+//        printf("Source Port %d Destination Port %d ",ntohs(flow->packet.tcp->source), ntohs(flow->packet.tcp->dest));
+      }
+
+      if(flow->packet.udp!=NULL){
+          source_port_int = ntohs(flow->packet.udp->source);
+          destination_port_int = ntohs(flow->packet.udp->dest);
+//        printf("Source Port %d Destination Port %d ",ntohs(flow->packet.udp->source), ntohs(flow->packet.udp->dest));
+      }
+
+
+
+      int source_port_length = snprintf( NULL, 0, "%d", source_port_int );
+      char* source_port = malloc( source_port_length + 1 );
+      snprintf(source_port,source_port_length+1,"%d", source_port_int);
+
+      int destination_port_length = snprintf(NULL,0,"%d",destination_port_int);
+      char* destination_port = malloc( destination_port_length+ 1 );
+      snprintf(destination_port,source_port_length+1,"%d",destination_port_int);
+
+      char (*master_protocol) = ndpi_get_proto_by_id(ndpi_str,ret.master_protocol);
+      char (*app_protocol) = ndpi_get_proto_by_id(ndpi_str,ret.app_protocol);
+      int category_of_app_int = ret.category;
+      int app_category_length = snprintf(NULL,0,"%d",category_of_app_int);
+      char *category_of_app = malloc(app_category_length+1);
+      snprintf(category_of_app,app_category_length+1,"%d",category_of_app_int);
+
+      char arg[1000] = "INSERT INTO ipdr(source_ip, destination_ip, source_port, destination_port, major_protocol, minor_protocol, category) values('";
+      strcat(arg, source_ip);
+      strcat(arg, "','");
+      strcat(arg, destination_ip);
+      strcat(arg, "','");
+      strcat(arg, source_port);
+      strcat(arg, "','");
+      strcat(arg, destination_port);
+      strcat(arg, "','");
+      strcat(arg, master_protocol);
+      strcat(arg, "','");
+      strcat(arg, app_protocol);
+      strcat(arg, "','");
+      strcat(arg, category_of_app);
+      strcat(arg,"')");
+//    printf("%s",arg);
+
+      MYSQL *con = mysql_init(NULL);
+
+      if (con == NULL) {
+          fprintf(stderr, "%s\n", mysql_error(con));
+          exit(1);
+      }
+
+      if (mysql_real_connect(con, "localhost", "sharryy", "123456",
+                             "netraptor", 0, NULL, 0) == NULL) {
+          fprintf(stderr, "%s\n", mysql_error(con));
+          mysql_close(con);
+          exit(1);
+      }
+
+      if (mysql_query(con,arg)) {
+          fprintf(stderr, "%s\n", mysql_error(con));
+          mysql_close(con);
+          exit(1);
+      }
+
+      mysql_close(con);
+
+
   }
 
   ndpi_reconcile_protocols(ndpi_str, flow, &ret);
